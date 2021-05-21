@@ -1,0 +1,131 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pvc
+  labels:
+    app: wp
+    name: wp-pvc
+
+spec:
+  storageClassName: do-block-storage
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deploy
+  labels: 
+    name: wordpress-deploy
+spec: 
+  replicas: 1
+  selector: 
+    matchLabels: 
+      name: wordpress-pod
+  template:
+    metadata:
+      name: wordpress-pod
+      labels:
+        name: wordpress-pod
+
+    spec:
+      volumes:
+      - name: wp-vol
+        persistentVolumeClaim:
+          claimName: wp-pvc
+      initContainers:
+      - name: scrub-init-container
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c", "test -e /scrub && rm -rf /scrub/..?* /scrub/.[!.]* /scrub/*  && test -z \"$(ls -A /scrub)\" || exit 1"]
+        volumeMounts:
+        - name: wp-vol
+          mountPath: /scrub
+
+      containers:
+      - name: wordpress-container
+        image: wordpress:php8.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /var/www/html
+          name: wp-vol
+
+        envFrom:
+        - configMapRef:
+            name: wp-cm
+        - secretRef:
+            name: wp-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-svc
+  labels: 
+    name: wordpress-svc
+
+spec:
+  type: ClusterIP
+  selector: 
+    name: wordpress-pod
+  ports:
+  - port: 8080
+    targetPort: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ing
+  labels:
+    name: wordpress-ing
+  annotations:
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/limit-rpm: "300"
+
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: wordpress.144.126.242.210.nip.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress-svc
+            port:
+              number: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkingPolicy
+metadata:
+  name: wp-netpol
+  labels:
+    name: wp-netpol
+
+spec:
+  podSelector:
+    matchLabels:
+      name: wordpress-pod
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/instance: my-ingress
+      namespaceSelector:
+        matchLabels:
+          name: ingress
+    ports:
+    - port: 3306
+      protocol: TCP

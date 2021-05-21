@@ -2,9 +2,9 @@
   "ExpandedNodes": [
     "",
     "\\bgg",
-    "\\bgg\\server",
-    "\\workshop02"
+    "\\workshop02",
+    "\\workshop03"
   ],
-  "SelectedNode": "\\bgg\\server\\Dockerfile",
+  "SelectedNode": "\\workshop03\\fortune-deploy.yaml",
   "PreviewInSolutionExplorer": false
 }

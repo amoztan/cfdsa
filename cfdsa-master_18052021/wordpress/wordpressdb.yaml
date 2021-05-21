@@ -1,0 +1,82 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wpdb-pvc
+  labels:
+    app: wpdb
+    name: wpdb-pvc
+
+spec:
+  storageClassName: do-block-storage
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wpdb-deploy
+  labels:
+    app: wpdb
+    name: wpdb-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: wpdb-pod
+  template:
+    metadata:
+      name: wpdb-pod
+      labels:
+        app: wpdb
+        name: wpdb-pod
+    spec:
+      volumes:
+      - name: wpdb-vol
+        persistentVolumeClaim:
+          claimName: wpdb-pvc
+      initContainers:
+      - name: scrub-init-container
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c", "test -e /scrub && rm -rf /scrub/..?* /scrub/.[!.]* /scrub/*  && test -z \"$(ls -A /scrub)\" || exit 1"]
+        volumeMounts:
+        - name: wpdb-vol
+          mountPath: /scrub
+
+      containers:
+      - name: wpdb-container
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: mypassword
+        - name: MYSQL_DATABASE
+          value: mydb
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: wpdb-port
+          containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/msql
+          name: wpdb-vol
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wpdb-svc
+  labels:
+    app: wpdb
+    name: wpdb-svc
+
+spec:
+  type: ClusterIP
+  selector: 
+    name: wpdb-pod
+  ports:
+  - port: 3306
+    targetPort: wpdb-port
